@@ -132,6 +132,7 @@ class Inference():
             list_actions += [actions]
 
         done = False
+        print("Starting inference...")
 
         # Loop until environment is done
         while not done:
@@ -172,7 +173,7 @@ class Inference():
                 state, reward, done = self.client.get_next_state("get_next", sending_data)
 
                 # Normalize the state
-                vec_state = self.normalize_state(state)
+                vec_state = self.normalize_state(state if state is not None else {})
 
                 if self.debug:
                     print(f"    Got state {state} and reward {reward}.")

@@ -22,16 +22,16 @@ if __name__ == "__main__":
         client = Client(gym_host=args.host, gym_port=args.port)
 
         # Load the configuration file
-        with open(f"{sys.path[0]}\\sac-configuration.json", "r") as file:
+        with open(f"{sys.path[0]}\\infer-configuration.json", "r") as file:
             config = json.load(file)
 
         # Create configuration object
         conf = DataFromJSON(config, "configuration")
 
-        # Create the SAC algorithm
+        # Create the Inference object
         infer = Inference(conf, client, args.inpt)
 
-        # Start the SAC algorithm
+        # Start the inference
         infer.start()
     
     except Exception as e:
