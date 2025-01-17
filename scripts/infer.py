@@ -1,4 +1,6 @@
 import os
+import numpy as np
+import matplotlib.pyplot as plt
 
 from scripts.client import Client
 from scripts.model import *
@@ -10,12 +12,15 @@ class Inference():
     """
     Class to represent the Soft Actor-Critic algorithm. Children class of nn.Module.
     """
-    def __init__(self, conf: DataFromJSON, client: Client, input_path: str):
+    def __init__(self, conf: DataFromJSON, client: Client, save_path: str, input_path: str):
         self.__role_type = "Inference"
         self.__conf = conf
         self.client = client
+        self.save_path = save_path
         self.input_path = input_path
         self.set_properties(conf)
+        self.attn_weights_all_layers = []
+        self.attn_weights_all_layers_all_runs = []
 
     def set_properties(self, conf: DataFromJSON):
         """
@@ -31,6 +36,9 @@ class Inference():
         """
         # Load the model
         model = self.load_model()
+
+        # Adsd forward hooks to the model
+        self.add_forward_hooks(model)
 
         # Run the inference
         self.run(model)
@@ -94,6 +102,29 @@ class Inference():
 
         return model
     
+    def add_forward_hooks(self, model: EOSModel):
+        """
+        Add forward hooks to the model.
+        """
+        # Register the hook to the model's encoder
+        for layer in model.transformer.encoder.layers:
+            layer.self_attn.register_forward_hook(self.attn_forward_hook)
+
+        # Register the hook to the model's decoder
+        for layer in model.transformer.decoder.layers:
+            layer.self_attn.register_forward_hook(self.attn_forward_hook)
+
+    def attn_forward_hook(self, module, module_input, module_output):
+        # Output is a tuple: (attn_output, attn_output_weights)
+        # attn_output_weights is what we want to visualize
+        # print("Forward hook called!")
+        # print("Module:", module)
+        # print("Module Input:", module_input)
+        # print("Module Output:", module_output)
+        attn_output_weights = module_output[1]
+        # print("Output:", module_output)
+        self.attn_weights_all_layers.append(attn_output_weights)
+    
     def run(self, model: EOSModel):
         """
         Run the inference procedure.
@@ -152,6 +183,9 @@ class Inference():
                 # Get the action from the model
                 stochastic_actions = model(states, actions)
 
+                # Store the attention weights
+                self.store_attn_weights()
+
                 # Select the last stochastic action
                 a_sto = stochastic_actions[-1, -1, :]
 
@@ -202,6 +236,8 @@ class Inference():
                 list_actions[idx] = actions
 
         print("Inference finished! Reward plots are available at Earth Gym.")
+        print("Generating attention plots...")
+        self.generate_attention_plots(model)
 
     def normalize_state(self, state: dict) -> list:
         """
@@ -223,3 +259,52 @@ class Inference():
             vec_state.append(value * conversion_dict[key][0] + conversion_dict[key][1])
 
         return vec_state
+    
+    def store_attn_weights(self):
+        """
+        Store the attention weights.
+        """
+        self.attn_weights_all_layers_all_runs.append(self.attn_weights_all_layers)
+        self.attn_weights_all_layers = []
+
+    def generate_attention_plots(self, model: EOSModel):
+        """
+        Generate the attention plots.
+        """
+        # Create the attention directory
+        if not os.path.exists(f"{self.save_path}\\attention"):
+            os.makedirs(f"{self.save_path}\\attention")
+
+        num_encoder_layers = model.transformer.encoder.num_layers
+        num_decoder_layers = model.transformer.decoder.num_layers
+
+        # Find a square distribution for the plot
+        rows = int(np.ceil(np.sqrt(num_encoder_layers + num_decoder_layers)))
+        cols = int(np.ceil((num_encoder_layers + num_decoder_layers) / rows))
+
+        # Create a plot for the attention weights
+        fig = plt.figure(figsize=(10, 10))
+
+        for run_idx, attn_weights_all_layers in enumerate(self.attn_weights_all_layers_all_runs):
+            for i, attn_weights in enumerate(attn_weights_all_layers):
+                if len(attn_weights[0]) < self.max_len:
+                    print(f"Skipping because there are only {len(attn_weights[0])} sequences...")
+                    continue_plot = False
+                else:
+                    ax = fig.add_subplot(rows, cols, i+1)
+                    ax.matshow(attn_weights[0].detach().numpy(), cmap='viridis')
+                    if i < num_encoder_layers:
+                        ax.set_title(f"Encoder Layer {i+1}")
+                    else:
+                        ax.set_title(f"Decoder Layer {i+1-num_decoder_layers}")
+                    ax.set_xticks([0, self.max_len-1])
+                    ax.set_yticks([0, self.max_len-1])
+                    plt.colorbar(ax.matshow(attn_weights[0].detach().numpy(), cmap='viridis'))
+                    continue_plot = True
+
+            if continue_plot:
+                plt.tight_layout()
+                plt.savefig(f"{self.save_path}\\attention\\attention_{run_idx}.png", dpi=500)
+                plt.clf()
+
+        

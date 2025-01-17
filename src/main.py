@@ -14,7 +14,8 @@ if __name__ == "__main__":
 
         argparse.add_argument("--host", default="localhost", type=str, help="Host address.")
         argparse.add_argument("--port", default=5555, type=int, help="Port number.")
-        argparse.add_argument("--inpt", type=str, help="Configuration file.")
+        argparse.add_argument("--save", type=str, help="Plot save path.")
+        argparse.add_argument("--inpt", type=str, help="Model path.")
 
         args = argparse.parse_args()
 
@@ -29,7 +30,7 @@ if __name__ == "__main__":
         conf = DataFromJSON(config, "configuration")
 
         # Create the Inference object
-        infer = Inference(conf, client, args.inpt)
+        infer = Inference(conf, client, args.save, args.inpt)
 
         # Start the inference
         infer.start()
