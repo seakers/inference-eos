@@ -1,6 +1,7 @@
 {
     "General": {
-        "debug": false
+        "debug": false,
+        "has_attention": false
     },
     "Environment": {
         "state_dim": 8,
@@ -9,15 +10,33 @@
         "agents": [0]
     },
     "Architecture": {
-        "d_model": 32,
-        "max_len": 100,
-        "pos_dropout": 0.1,
-        "nhead": 8,
-        "num_encoder_layers": 1,
-        "num_decoder_layers": 1,
-        "dim_feedforward": 2048,
-        "transformer_dropout": 0.1,
-        "activation": "relu",
-        "batch_first": true
+        "architecture_used": "MLP",
+        "architectures_available": [
+            {
+                "name": "Transformer",
+                "aug_state_contains_actions": true,
+                "d_model": 512,
+                "max_len": 10,
+                "embed_dropout": 0.1,
+                "pos_dropout": 0.1,
+                "nhead": 8,
+                "num_encoder_layers": 1,
+                "num_decoder_layers": 1,
+                "dim_feedforward": 2048,
+                "transformer_dropout": 0.1,
+                "activation": "relu",
+                "batch_first": true,
+                "kaiming_init": false,
+                "critics_hidden_layers": [128, 128]
+            },
+            {
+                "name": "MLP",
+                "aug_state_contains_actions": false,
+                "max_len": 10,
+                "hidden_layers": [128, 128],
+                "dropout": 0.1,
+                "critics_hidden_layers": [128, 128]
+            }
+        ]
     }
 }

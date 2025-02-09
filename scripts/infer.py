@@ -10,7 +10,7 @@ RT = 6371.0 # Earth radius in km
 
 class Inference():
     """
-    Class to represent the Soft Actor-Critic algorithm. Children class of nn.Module.
+    Class to represent the Soft Actor-Critic algorithm.
     """
     def __init__(self, conf: DataFromJSON, client: Client, save_path: str, input_path: str):
         self.__role_type = "Inference"
@@ -37,26 +37,49 @@ class Inference():
         # Load the model
         model = self.load_model()
 
-        # Adsd forward hooks to the model
-        self.add_forward_hooks(model)
+        # Add forward hooks to the model
+        if self.architecture_used == "Transformer":
+            self.add_forward_hooks(model)
 
         # Run the inference
         self.run(model)
 
-    def load_model(self) -> EOSModel:
+    def load_model(self) -> nn.Module:
         """
-        Create the entities for the SAC algorithm.
+        Create and load the model for the inference.
+        """
+        # Add the configuration fiel properties of the architecture chosen
+        for i in range(len(self.architectures_available)):
+            if self.architectures_available[i]["name"] == self.architecture_used:
+                architecture_conf = DataFromJSON(self.architectures_available[i], "architecture_conf")
+                break
+
+        self.set_properties(architecture_conf)
+
+        # Select the exact configuration for the model
+        if self.architecture_used == "Transformer":
+            model = self.load_transformer_model()
+        elif self.architecture_used == "MLP":
+            model = self.load_mlp_model()
+
+        return model
+    
+    def load_transformer_model(self) -> nn.Module:
+        """
+        Create and load transformer model.
         """
         # Create the embedder object for states
         states_embedder = FloatEmbedder(
             input_dim=self.state_dim,
-            embed_dim=self.d_model
+            embed_dim=self.d_model,
+            dropout=self.embed_dropout
         )
         
         # Create the embedder object for actions
         actions_embedder = FloatEmbedder(
             input_dim=self.action_dim,
-            embed_dim=self.d_model
+            embed_dim=self.d_model,
+            dropout=self.embed_dropout
         )
         
         # Create the positional encoder object
@@ -75,7 +98,8 @@ class Inference():
             dim_feedforward=self.dim_feedforward,
             dropout=self.transformer_dropout,
             activation=self.activation,
-            batch_first=self.batch_first
+            batch_first=self.batch_first,
+            kaiming_init=self.kaiming_init
         )
         
         # Create a linear outside stochastic layer called projector
@@ -85,24 +109,45 @@ class Inference():
         )
         
         # Create the model object
-        model = EOSModel(
+        model = TransformerModelEOS(
             state_embedder=states_embedder,
             action_embedder=actions_embedder,
             pos_encoder=pos_encoder,
             transformer=transformer,
-            projector=stochastic_projector
+            projector=stochastic_projector,
+            a_conversions=self.a_conversions
         )
 
         # Load the previous models if they exist
-        if os.path.exists(f"{self.input_path}\\model.pth"):
+        if os.path.exists(f"{self.input_path}/model.pth"):
             print("Loading model...")
-            model.load_state_dict(torch.load(f"{self.input_path}\\model.pth", weights_only=True))
+            model.load_state_dict(torch.load(f"{self.input_path}/model.pth", weights_only=True))
         else:
             raise ImportError("There is no model to load.")
 
         return model
     
-    def add_forward_hooks(self, model: EOSModel):
+    def load_mlp_model(self) -> nn.Module:
+        """
+        Create and load MLP model.
+        """
+        # Create the MLP model
+        model = MLPModelEOS(
+            state_dim=self.state_dim * self.max_len,
+            action_dim=self.action_dim,
+            n_hidden=self.hidden_layers,
+            dropout=self.dropout,
+            a_conversions=self.a_conversions
+        )
+
+        # Load the previous models if they exist
+        if os.path.exists(f"{self.input_path}/model.pth"):
+            print("Loading model...")
+            model.load_state_dict(torch.load(f"{self.input_path}/model.pth", weights_only=True))
+        else:
+            raise ImportError("There is no model to load.")
+    
+    def add_forward_hooks(self, model: nn.Module):
         """
         Add forward hooks to the model.
         """
@@ -125,7 +170,7 @@ class Inference():
         # print("Output:", module_output)
         self.attn_weights_all_layers.append(attn_output_weights)
     
-    def run(self, model: EOSModel):
+    def run(self, model: nn.Module):
         """
         Run the inference procedure.
         """
@@ -184,7 +229,8 @@ class Inference():
                 stochastic_actions = model(states, actions)
 
                 # Store the attention weights
-                self.store_attn_weights()
+                if self.has_attention:
+                    self.store_attn_weights()
 
                 # Select the last stochastic action
                 a_sto = stochastic_actions[-1, -1, :]
@@ -237,7 +283,10 @@ class Inference():
 
         print("Inference finished! Reward plots are available at Earth Gym.")
         print("Generating attention plots...")
-        self.generate_attention_plots(model)
+
+        # Generate the attention plots
+        if self.has_attention:
+            self.generate_attention_plots(model)
 
     def normalize_state(self, state: dict) -> list:
         """
@@ -267,13 +316,13 @@ class Inference():
         self.attn_weights_all_layers_all_runs.append(self.attn_weights_all_layers)
         self.attn_weights_all_layers = []
 
-    def generate_attention_plots(self, model: EOSModel):
+    def generate_attention_plots(self, model: nn.Module):
         """
         Generate the attention plots.
         """
         # Create the attention directory
-        if not os.path.exists(f"{self.save_path}\\attention"):
-            os.makedirs(f"{self.save_path}\\attention")
+        if not os.path.exists(f"{self.save_path}/attention"):
+            os.makedirs(f"{self.save_path}/attention")
 
         num_encoder_layers = model.transformer.encoder.num_layers
         num_decoder_layers = model.transformer.decoder.num_layers
@@ -304,7 +353,5 @@ class Inference():
 
             if continue_plot:
                 plt.tight_layout()
-                plt.savefig(f"{self.save_path}\\attention\\attention_{run_idx}.png", dpi=500)
+                plt.savefig(f"{self.save_path}/attention/attention_{run_idx}.png", dpi=500)
                 plt.clf()
-
-        
