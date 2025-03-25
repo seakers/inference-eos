@@ -1,5 +1,3 @@
-import torch
-
 class DataFromJSON():
     """
     Class to manage the data of the model.

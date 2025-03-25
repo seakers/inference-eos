@@ -6,3 +6,6 @@ __pycache__/
 
 # Plot files
 *.png
+
+# Input files
+input/

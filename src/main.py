@@ -3,7 +3,7 @@ import sys
 import argparse
 import traceback
 
-from scripts.infer import Inference
+from scripts.inference import Inference
 from scripts.utils import DataFromJSON
 from scripts.client import Client
 
@@ -23,22 +23,22 @@ if __name__ == "__main__":
         client = Client(gym_host=args.host, gym_port=args.port)
 
         # Load the configuration file
-        with open(f"{sys.path[0]}/infer-configuration.json", "r") as file:
+        with open(f"{sys.path[0]}\\configuration.json", "r") as file:
             config = json.load(file)
 
         # Create configuration object
         conf = DataFromJSON(config, "configuration")
 
         # Create the Inference object
-        infer = Inference(conf, client, args.save, args.inpt)
+        inference = Inference(client, conf, args.save, args.inpt)
 
         # Start the inference
-        infer.start()
+        inference.start()
     
     except Exception as e:
         print(f"Error: {e}")
         traceback.print_exc()
 
     finally:
-        infer.client.shutdown_gym()
+        inference._client.shutdown_gym()
         
